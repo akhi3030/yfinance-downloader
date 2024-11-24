@@ -31,33 +31,23 @@ fn days_in_month(year: i32, month: u32) -> u32 {
             .checked_sub_days(Days::new(1))
             .unwrap()
     };
-    end.signed_duration_since(start).num_days() as u32
+    end.signed_duration_since(start).num_days() as u32 + 1
 }
 
-fn get_url(cli: &Cli) -> String {
-    let start = unix_timestamp(NaiveDate::from_ymd_opt(cli.year, cli.month, 1).unwrap());
-    let end = unix_timestamp(
-        NaiveDate::from_ymd_opt(cli.year, cli.month, days_in_month(cli.year, cli.month)).unwrap(),
-    );
+fn get_url(year: i32, month: u32, ticker: &str) -> String {
+    let start = unix_timestamp(NaiveDate::from_ymd_opt(year, month, 1).unwrap());
+    let end =
+        unix_timestamp(NaiveDate::from_ymd_opt(year, month, days_in_month(year, month)).unwrap());
     format!(
         "https://query2.finance.yahoo.com/v8/finance/chart/{}?period1={}&period2={}&interval=1d&events=history&includeAdjustedClose=true", 
-        cli.ticker,
+        ticker,
         start,
         end,
     )
 }
 
-fn get_data(url: &str) -> (Vec<DateTime<Utc>>, Vec<f64>) {
-    let client = Client::new();
-    let data = client
-        .get(url)
-        .header(USER_AGENT, "curl/8.7.1")
-        .send()
-        .unwrap()
-        .json::<serde_json::Value>()
-        .unwrap();
-
-    let Value::Object(obj) = data else {
+fn parse_data(response: &Value) -> (Vec<DateTime<Utc>>, Vec<f64>) {
+    let Value::Object(obj) = response else {
         unimplemented!()
     };
     let Value::Object(chart) = obj.get("chart").unwrap() else {
@@ -112,11 +102,81 @@ fn get_data(url: &str) -> (Vec<DateTime<Utc>>, Vec<f64>) {
 
 fn main() {
     let cli = Cli::parse();
-    let url = get_url(&cli);
-    let (timestamp, close) = get_data(&url);
+    let url = get_url(cli.year, cli.month, &cli.ticker);
+    let client = Client::new();
+    let response = client
+        .get(url)
+        .header(USER_AGENT, "curl/8.7.1")
+        .send()
+        .unwrap()
+        .json::<serde_json::Value>()
+        .unwrap();
+    let (timestamp, close) = parse_data(&response);
     let mut file = File::create(cli.filename).unwrap();
     writeln!(file, "Date,Close").unwrap();
     for (time, close) in timestamp.into_iter().zip(close) {
         writeln!(file, "{},{}", time.format("%Y-%m-%d"), close).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn test_days_in_month() {
+        assert_eq!(days_in_month(2024, 10), 31);
+        assert_eq!(days_in_month(2024, 2), 29);
+        assert_eq!(days_in_month(2023, 2), 28);
+    }
+
+    #[test]
+    fn test_unix_timestamp() {
+        assert_eq!(
+            unix_timestamp(NaiveDate::from_ymd_opt(2024, 11, 24).unwrap()),
+            1732406400
+        );
+    }
+
+    #[test]
+    fn test_get_url() {
+        assert_eq!(
+            get_url(2024, 11, "a"),
+            "https://query2.finance.yahoo.com/v8/finance/chart/a?period1=1730419200&period2=1732924800&interval=1d&events=history&includeAdjustedClose=true",
+        );
+    }
+
+    #[test]
+    fn test_parse_data() {
+        let response = json!({
+            "chart": {
+                "result": [
+                    {
+                        "indicators": {
+                            "adjclose": [
+                                {
+                                    "adjclose": [
+                                        1,
+                                    ]
+                                },
+                            ]
+                        },
+                        "timestamp": [
+                            1732406400,
+                        ]
+                    },
+                ]
+            }
+        });
+        let expected_timestamps = vec![NaiveDate::from_ymd_opt(2024, 11, 24)
+            .unwrap()
+            .and_hms_opt(0, 0, 0)
+            .unwrap()
+            .and_utc()];
+        let expected_closes = vec![1f64];
+        let (timestamps, closes) = parse_data(&response);
+        assert_eq!(expected_closes, closes);
+        assert_eq!(expected_timestamps, timestamps);
     }
 }
