@@ -1,25 +1,56 @@
-use chrono::{DateTime, Duration, NaiveDate, Timelike};
+use chrono::{DateTime, Days, Duration, NaiveDate, Timelike, Utc};
+use clap::Parser;
 use reqwest::blocking::Client;
 use reqwest::header::USER_AGENT;
 use serde_json::Value;
 use std::fs::File;
 use std::io::prelude::*;
 
+#[derive(Parser)]
+struct Cli {
+    ticker: String,
+    year: i32,
+    month: u32,
+    filename: String,
+}
+
 fn unix_timestamp(date: NaiveDate) -> i64 {
     date.and_hms_opt(0, 0, 0).unwrap().and_utc().timestamp()
 }
 
-fn main() {
-    let start = unix_timestamp(NaiveDate::from_ymd_opt(2024, 10, 1).unwrap());
-    let end = unix_timestamp(NaiveDate::from_ymd_opt(2024, 10, 31).unwrap());
-    let ticker = "EURCHF=x";
-    let output_file = "./eur.csv";
-    let url = format!(
-        "https://query2.finance.yahoo.com/v8/finance/chart/{}?period1={}&period2={}&interval=1d&events=history&includeAdjustedClose=true",
-        ticker, start, end);
+fn days_in_month(year: i32, month: u32) -> u32 {
+    let start = NaiveDate::from_ymd_opt(year, month, 1).unwrap();
+    let end = if month == 12 {
+        NaiveDate::from_ymd_opt(year + 1, 1, 1)
+            .unwrap()
+            .checked_sub_days(Days::new(1))
+            .unwrap()
+    } else {
+        NaiveDate::from_ymd_opt(year, month + 1, 1)
+            .unwrap()
+            .checked_sub_days(Days::new(1))
+            .unwrap()
+    };
+    end.signed_duration_since(start).num_days() as u32
+}
+
+fn get_url(cli: &Cli) -> String {
+    let start = unix_timestamp(NaiveDate::from_ymd_opt(cli.year, cli.month, 1).unwrap());
+    let end = unix_timestamp(
+        NaiveDate::from_ymd_opt(cli.year, cli.month, days_in_month(cli.year, cli.month)).unwrap(),
+    );
+    format!(
+        "https://query2.finance.yahoo.com/v8/finance/chart/{}?period1={}&period2={}&interval=1d&events=history&includeAdjustedClose=true", 
+        cli.ticker,
+        start,
+        end,
+    )
+}
+
+fn get_data(url: &str) -> (Vec<DateTime<Utc>>, Vec<f64>) {
     let client = Client::new();
     let data = client
-        .get(&url)
+        .get(url)
         .header(USER_AGENT, "curl/8.7.1")
         .send()
         .unwrap()
@@ -76,8 +107,14 @@ fn main() {
             }
         })
         .collect::<Vec<_>>();
+    (timestamp, close)
+}
 
-    let mut file = File::create(output_file).unwrap();
+fn main() {
+    let cli = Cli::parse();
+    let url = get_url(&cli);
+    let (timestamp, close) = get_data(&url);
+    let mut file = File::create(cli.filename).unwrap();
     writeln!(file, "Date,Close").unwrap();
     for (time, close) in timestamp.into_iter().zip(close) {
         writeln!(file, "{},{}", time.format("%Y-%m-%d"), close).unwrap();
