@@ -56,7 +56,7 @@ fn parse_data(response: &Value) -> (Vec<DateTime<Utc>>, Vec<f64>) {
     let Value::Array(result) = chart.get("result").unwrap() else {
         unimplemented!()
     };
-    let Value::Object(result) = result.get(0).unwrap() else {
+    let Value::Object(result) = result.first().unwrap() else {
         unimplemented!()
     };
     let Value::Object(indicators) = result.get("indicators").unwrap() else {
@@ -65,14 +65,14 @@ fn parse_data(response: &Value) -> (Vec<DateTime<Utc>>, Vec<f64>) {
     let Value::Array(adjclose) = indicators.get("adjclose").unwrap() else {
         unimplemented!()
     };
-    let Value::Object(adjclose) = adjclose.get(0).unwrap() else {
+    let Value::Object(adjclose) = adjclose.first().unwrap() else {
         unimplemented!()
     };
     let Value::Array(adjclose) = adjclose.get("adjclose").unwrap() else {
         unimplemented!()
     };
     let close = adjclose
-        .into_iter()
+        .iter()
         .map(|value| {
             let Value::Number(value) = value else {
                 unimplemented!()
@@ -84,7 +84,7 @@ fn parse_data(response: &Value) -> (Vec<DateTime<Utc>>, Vec<f64>) {
         unimplemented!()
     };
     let timestamp = timestamp
-        .into_iter()
+        .iter()
         .map(|value| {
             let Value::Number(value) = value else {
                 unimplemented!()
