@@ -129,6 +129,7 @@ mod tests {
         assert_eq!(days_in_month(2024, 10), 31);
         assert_eq!(days_in_month(2024, 2), 29);
         assert_eq!(days_in_month(2023, 2), 28);
+        assert_eq!(days_in_month(2023, 12,), 31);
     }
 
     #[test]
@@ -149,6 +150,21 @@ mod tests {
 
     #[test]
     fn test_parse_data() {
+        let timestamp0 = 1732406400;
+        let date_time0 = NaiveDate::from_ymd_opt(2024, 11, 24)
+            .unwrap()
+            .and_hms_opt(0, 0, 0)
+            .unwrap()
+            .and_utc();
+
+        // This timestamp corresponds to 1 hr in the past.  The code adds 1 hour offset.
+        let timestamp1 = 1732662000;
+        let date_time1 = NaiveDate::from_ymd_opt(2024, 11, 27)
+            .unwrap()
+            .and_hms_opt(0, 0, 0)
+            .unwrap()
+            .and_utc();
+
         let response = json!({
             "chart": {
                 "result": [
@@ -158,23 +174,21 @@ mod tests {
                                 {
                                     "adjclose": [
                                         1,
+                                        2,
                                     ]
                                 },
                             ]
                         },
                         "timestamp": [
-                            1732406400,
+                            timestamp0,
+                            timestamp1,
                         ]
                     },
                 ]
             }
         });
-        let expected_timestamps = vec![NaiveDate::from_ymd_opt(2024, 11, 24)
-            .unwrap()
-            .and_hms_opt(0, 0, 0)
-            .unwrap()
-            .and_utc()];
-        let expected_closes = vec![1f64];
+        let expected_timestamps = vec![date_time0, date_time1];
+        let expected_closes = vec![1f64, 2f64];
         let (timestamps, closes) = parse_data(&response);
         assert_eq!(expected_closes, closes);
         assert_eq!(expected_timestamps, timestamps);
