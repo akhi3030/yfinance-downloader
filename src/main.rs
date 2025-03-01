@@ -106,7 +106,7 @@ fn main() {
     let client = Client::new();
     let response = client
         .get(url)
-        .header(USER_AGENT, "curl/8.7.1")
+        .header(USER_AGENT, "Mozilla/5.0")
         .send()
         .unwrap()
         .json::<serde_json::Value>()
