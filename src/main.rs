@@ -39,7 +39,7 @@ fn get_url(year: i32, month: u32, ticker: &str) -> String {
     let end =
         unix_timestamp(NaiveDate::from_ymd_opt(year, month, days_in_month(year, month)).unwrap());
     format!(
-        "https://query2.finance.yahoo.com/v8/finance/chart/{}?period1={}&period2={}&interval=1d&events=history&includeAdjustedClose=true", 
+        "https://query2.finance.yahoo.com/v8/finance/chart/{}?period1={}&period2={}&interval=1d&events=history&includeAdjustedClose=true",
         ticker,
         start,
         end,
@@ -62,42 +62,39 @@ fn parse_data(response: &Value) -> (Vec<DateTime<Utc>>, Vec<f64>) {
     let Value::Object(indicators) = result.get("indicators").unwrap() else {
         unimplemented!()
     };
-    let Value::Array(adjclose) = indicators.get("adjclose").unwrap() else {
+    let Value::Array(adjcloses) = indicators.get("adjclose").unwrap() else {
         unimplemented!()
     };
-    let Value::Object(adjclose) = adjclose.first().unwrap() else {
+    let Value::Object(adjcloses) = adjcloses.first().unwrap() else {
         unimplemented!()
     };
-    let Value::Array(adjclose) = adjclose.get("adjclose").unwrap() else {
+    let Value::Array(adjcloses) = adjcloses.get("adjclose").unwrap() else {
         unimplemented!()
     };
-    let close = adjclose
+    let Value::Array(timestamps) = result.get("timestamp").unwrap() else {
+        unimplemented!()
+    };
+
+    adjcloses
         .iter()
-        .map(|value| {
-            let Value::Number(value) = value else {
-                unimplemented!()
-            };
-            value.as_f64().unwrap()
+        .zip(timestamps)
+        .filter_map(|(close, timestamp)| match close {
+            Value::Number(n) => Some((n.as_f64().unwrap(), timestamp)),
+            _ => None,
         })
-        .collect::<Vec<_>>();
-    let Value::Array(timestamp) = result.get("timestamp").unwrap() else {
-        unimplemented!()
-    };
-    let timestamp = timestamp
-        .iter()
-        .map(|value| {
-            let Value::Number(value) = value else {
+        .map(|(close, timestamp)| {
+            let Value::Number(value) = timestamp else {
                 unimplemented!()
             };
             let timestamp = DateTime::from_timestamp(value.as_i64().unwrap(), 0).unwrap();
-            if timestamp.hour() == 23 {
+            let timestamp = if timestamp.hour() == 23 {
                 timestamp + Duration::hours(1)
             } else {
                 timestamp
-            }
+            };
+            (timestamp, close)
         })
-        .collect::<Vec<_>>();
-    (timestamp, close)
+        .unzip()
 }
 
 fn main() {
